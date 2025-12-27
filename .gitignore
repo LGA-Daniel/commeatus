@@ -1,0 +1,21 @@
+# Ignorar ambiente virtual (é pesado e recriável)
+.venv/
+venv/
+env/
+
+# Ignorar arquivos compilados do Python
+__pycache__/
+*.pyc
+
+# Ignorar SEGREDOS (Importante!)
+.streamlit/secrets.toml
+.env
+*.pem
+
+# Ignorar Banco de Dados local (se estiver na pasta)
+*.sql
+*.sqlite3
+
+# Ignorar logs e arquivos do sistema
+*.log
+.DS_Store

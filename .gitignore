@@ -1,21 +1,41 @@
-# Ignorar ambiente virtual (é pesado e recriável)
-.venv_commeatus/
-venv/
-env/
+# --- Segurança (CRÍTICO) ---
+# Ignora arquivos que contêm senhas
+.env
+.streamlit/secrets.toml
+# Ignora chaves privadas se houver futuramente
+*.pem
+*.key
 
-# Ignorar arquivos compilados do Python
+# --- Python & Bytecode ---
+# O Docker gera esses arquivos e eles aparecem no host via volume
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# Ignorar SEGREDOS (Importante!)
-.streamlit/secrets.toml
-.env
-*.pem
+# --- Streamlit ---
+# Ignora cache local do Streamlit se houver
+.streamlit/config.toml # Opcional: Se quiser ignorar configs locais
+.streamlit/credentials.toml
 
-# Ignorar Banco de Dados local (se estiver na pasta)
-*.sql
+# --- Dados e Bancos Locais ---
+# Ignora arquivos de banco SQLite ou dumps SQL grandes
+*.db
 *.sqlite3
+# Ignora pasta de dados do Postgres (caso mudemos para bind mount local)
+postgres_data/
+data/
 
-# Ignorar logs e arquivos do sistema
-*.log
+# --- Jupyter Notebooks ---
+.ipynb_checkpoints
+
+# --- IDEs e Sistema Operacional ---
+.vscode/
+.idea/
 .DS_Store
+Thumbs.db
+
+# --- Lixo do Antigo Ambiente Virtual ---
+venv/
+env/
+.env_old/

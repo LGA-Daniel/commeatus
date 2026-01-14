@@ -16,11 +16,10 @@ RUN conda create -n commeatus_env python=3.9 \
     nomkl \
     -c conda-forge -y
 
+# Install PIP dependencies for Streamlit components
+RUN pip install extra-streamlit-components pyjwt
 # 2. Configurar o shell para usar o ambiente criado por padrão
 SHELL ["conda", "run", "-n", "commeatus_env", "/bin/bash", "-c"]
-
-# Install PIP dependencies for Streamlit components (Must run inside conda env)
-RUN pip install extra-streamlit-components pyjwt
 
 # 3. Cópia do código
 COPY . .

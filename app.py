@@ -1,5 +1,6 @@
 import streamlit as st
 import extra_streamlit_components as stx
+import time
 from src.auth import init_db_and_admin_if_needed, validate_token
 
 # Initialize Database and Admin
@@ -38,18 +39,23 @@ def logout():
     st.session_state.user = None
     # Delete cookie
     cookie_manager.delete("auth_token")
+    time.sleep(1)
     st.rerun()
 
 # --- Definição das Páginas ---
 login_page = st.Page("views/0. Login.py", title="Login", icon="🔐")
 home_page = st.Page("views/1. Home.py", title="Home", default=True)
+pregoes_page = st.Page("views/3. Pregoes.py", title="Dashboard Pregões", icon="📊")
 db_page = st.Page("views/2. Test DBCONN.py", title="Diagnóstico de Banco", icon="🔌")
+
 admin_page = st.Page("views/99. Admin Users.py", title="Gestão de Usuários", icon="👥")
+
+scripts_page = st.Page("views/98. Admin Scripts.py", title="Gestão de Scripts", icon="⚙️")
 
 # --- Lógica de Navegação ---
 if st.session_state.user:
     # Authenticated User
-    user_pages = [home_page]
+    user_pages = [home_page, pregoes_page]
     admin_tools = [db_page] 
     
     pages_dict = {
@@ -59,7 +65,7 @@ if st.session_state.user:
     
     # Add Admin pages if role is admin
     if st.session_state.user['role'] == 'admin':
-        pages_dict["Administração"] = [admin_page]
+        pages_dict["Administração"] = [admin_page, scripts_page]
         
     pg = st.navigation(pages_dict)
     

@@ -13,6 +13,11 @@ RUN conda create -n commeatus_env python=3.9 \
     jupyterlab \
     psycopg2 \
     sqlalchemy \
+    requests \
+    aiohttp \
+    schedule \
+    openpyxl \
+    pyjwt \
     nomkl \
     -c conda-forge -y
 
@@ -20,7 +25,8 @@ RUN conda create -n commeatus_env python=3.9 \
 SHELL ["conda", "run", "-n", "commeatus_env", "/bin/bash", "-c"]
 
 # Install PIP dependencies for Streamlit components (Must run inside conda env)
-RUN pip install extra-streamlit-components pyjwt
+# unique library not present in conda-forge
+RUN pip install extra-streamlit-components
 
 # 3. Cópia do código
 COPY . .

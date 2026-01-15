@@ -26,7 +26,7 @@ def check_password(password, stored_hash, salt):
 
 def create_token(username):
     """Generates a JWT token for the user."""
-    expiration = datetime.datetime.utcnow() + datetime.timedelta(days=7)
+    expiration = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
     payload = {
         "sub": username,
         "exp": expiration
@@ -119,6 +119,8 @@ def delete_user(username):
 def init_db_and_admin_if_needed():
     # Only import here to avoid circular dependency issues if called at top level
     from .database import engine, Base
+    # Ensure all models are imported and registered with Base before creating tables
+    from .models import User, Pregao
     Base.metadata.create_all(bind=engine)
     
     # Check if we have any users, if not, create admin

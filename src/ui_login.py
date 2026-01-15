@@ -39,7 +39,7 @@ def render_login(cookie_manager):
                     # 2. Generate and Set Token
                     token = create_token(user.username)
                     # Expires in 7 days (matches token exp)
-                    cookie_manager.set("auth_token", token, key="set_auth_token", expires_at=datetime.datetime.utcnow() + datetime.timedelta(days=7))
+                    cookie_manager.set("auth_token", token, key="set_auth_token", expires_at=datetime.datetime.utcnow() + datetime.timedelta(hours=1))
                     
                     st.success(f"Bem-vindo, {user.name or user.username}!")
                     time.sleep(1) # Give time for cookie to set

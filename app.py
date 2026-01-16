@@ -46,6 +46,8 @@ def logout():
 login_page = st.Page("views/0. Login.py", title="Login", icon="🔐")
 home_page = st.Page("views/1. Home.py", title="Home", default=True)
 pregoes_page = st.Page("views/3. Pregoes.py", title="Dashboard Pregões", icon="📊")
+detalhes_page = st.Page("views/4. Detalhes Itens.py", title="Detalhes Itens", icon="📋")
+clinicos_page = st.Page("views/5. Indicadores Clinicos.py", title="Indicadores Clínicos", icon="🏥")
 db_page = st.Page("views/2. Test DBCONN.py", title="Diagnóstico de Banco", icon="🔌")
 
 admin_page = st.Page("views/99. Admin Users.py", title="Gestão de Usuários", icon="👥")
@@ -55,7 +57,7 @@ scripts_page = st.Page("views/98. Admin Scripts.py", title="Gestão de Scripts",
 # --- Lógica de Navegação ---
 if st.session_state.user:
     # Authenticated User
-    user_pages = [home_page, pregoes_page]
+    user_pages = [home_page, pregoes_page, detalhes_page, clinicos_page]
     admin_tools = [db_page] 
     
     pages_dict = {
@@ -74,6 +76,11 @@ if st.session_state.user:
         st.write(f"Logado como: **{st.session_state.user['username']}**")
         if st.button("Sair", type="primary"):
             logout()
+            
+    # Cleanup Loop for Item Selection
+    # If we are NOT on the details page, clear the selection
+    if pg.title != "Detalhes Itens":
+        st.session_state.pop('selected_pregao_id', None)
             
     pg.run()
             

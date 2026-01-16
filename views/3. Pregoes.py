@@ -49,7 +49,7 @@ with st.container(border=True):
             dates_df = pd.read_sql("SELECT DISTINCT data_publicacao_pncp FROM pregoes", engine)
             if not dates_df.empty and 'data_publicacao_pncp' in dates_df.columns:
                 y = pd.to_datetime(dates_df['data_publicacao_pncp']).dt.year.unique()
-                years = sorted(y, reverse=True)
+                years = sorted([int(x) for x in y], reverse=True)
             
             # Get UASGs
             uasg_df = pd.read_sql("SELECT DISTINCT unidade_orgao FROM pregoes", engine)
@@ -62,16 +62,39 @@ with st.container(border=True):
     engine = get_engine()
     available_years, available_uasgs = load_filter_options()
     
-    # Initialize session state
-    if "filter_years" not in st.session_state: st.session_state.filter_years = available_years[:1]
-    if "filter_uasgs" not in st.session_state: st.session_state.filter_uasgs = []
-    if "filter_search" not in st.session_state: st.session_state.filter_search = ""
+    # Initialize persistent session state
+    if "p_filter_years" not in st.session_state: st.session_state.p_filter_years = []
+    if "p_filter_uasgs" not in st.session_state: st.session_state.p_filter_uasgs = []
+    if "p_filter_search" not in st.session_state: st.session_state.p_filter_search = ""
 
-    selected_years = c1.multiselect("Anos", options=available_years, default=st.session_state.filter_years, key="filter_years")
-    selected_uasgs = c2.multiselect("UASG / Unidade", options=available_uasgs, default=st.session_state.filter_uasgs, key="filter_uasgs")
+    # Widgets use 'value' from persistent state
+    # We don't use 'key' to bind directly because the widget would be cleared on page switch
+    selected_years = c1.multiselect("Anos", options=available_years, default=st.session_state.p_filter_years)
+    selected_uasgs = c2.multiselect("UASG / Unidade", options=available_uasgs, default=st.session_state.p_filter_uasgs)
     
     # Row 2: Search
-    search_query = st.text_input("Busca Livre", placeholder="Ex: Computadores, 12345/2023...", key="filter_search")
+    search_query = st.text_input("Busca Livre", value=st.session_state.p_filter_search, placeholder="Ex: Computadores, 12345/2023...")
+    
+    # Update persistent state immediately
+    st.session_state.p_filter_years = selected_years
+    st.session_state.p_filter_uasgs = selected_uasgs
+    st.session_state.p_filter_search = search_query
+
+# Modal for Worker Results
+@st.dialog("Resultado da Operação")
+def show_worker_result(success, msg, count):
+    if success:
+        st.success(f"{msg}")
+        if count > 0:
+            st.info(f"Registros processados: {count}")
+    else:
+        st.error(f"Erro: {msg}")
+
+# Check for pending worker results
+if "worker_result" in st.session_state:
+    res = st.session_state.worker_result
+    show_worker_result(res['success'], res['msg'], res['count'])
+    del st.session_state.worker_result
 
 # Modal for Details
 @st.dialog("Detalhes do Pregão", width="large")
@@ -93,6 +116,7 @@ def show_details(row_data):
             val_str = str(value)
             
             # Alternate columns
+    # Alternate columns
             with cols[idx % 2]:
                 with st.container(border=True):
                     st.caption(display_key)
@@ -103,6 +127,33 @@ def show_details(row_data):
     if 'conteudo' in row_data:
          with st.expander("Conteúdo JSON Bruto"):
              st.json(row_data['conteudo'])
+
+# Modal for Execution with Feedback
+@st.dialog("Sincronização de Itens")
+def run_import_dialog(pregao_id):
+    st.write("Conectando à API PNCP...")
+    
+    # Create a container for status updates
+    status_container = st.empty()
+    
+    with status_container.status("Processando...", expanded=True) as status:
+        st.write("Baixando dados...")
+        from src.workers.import_items import import_itens_pregao
+        success, msg, count = import_itens_pregao(pregao_id)
+        
+        if success:
+            status.update(label="Concluído!", state="complete", expanded=False)
+        else:
+            status.update(label="Erro!", state="error", expanded=False)
+            
+    if success:
+        st.success(f"{msg}")
+        st.info(f"Itens processados: {count}")
+    else:
+        st.error(f"Falha na importação: {msg}")
+        
+    if st.button("Fechar e Atualizar", type="primary"):
+        st.rerun()
 
 # Load Data
 if True:
@@ -134,7 +185,13 @@ if True:
     
     if search_query:
         # Search in the full JSON content cast to text for broad coverage
-        where_clauses.append("conteudo::text ILIKE %(search)s")
+        # Also explicitly check for "Number/Year" format which isn't contiguous in JSON
+        clause = """(
+            conteudo::text ILIKE %(search)s
+            OR CONCAT(conteudo->>'numeroCompra', '/', conteudo->>'anoCompra') ILIKE %(search)s
+            OR CONCAT(conteudo->>'sequencialCompra', '/', conteudo->>'anoCompra') ILIKE %(search)s
+        )"""
+        where_clauses.append(clause)
         sql_params["search"] = f"%{search_query}%"
         
     where_str = " AND ".join(where_clauses)
@@ -189,6 +246,19 @@ if True:
             
             paginated_df = df.iloc[start_idx:end_idx]
             
+            # Optimization: Fetch IDs that have items
+            pregoes_with_items = set()
+            try:
+                # Check directly in the items table
+                items_df = pd.read_sql(
+                    f"SELECT DISTINCT pregao_id FROM itens_pregao WHERE pregao_id IN {tuple(paginated_df['id'].tolist()) + (0,)}", 
+                    engine
+                )
+                pregoes_with_items = set(items_df['pregao_id'].tolist())
+            except Exception:
+                # Table might not exist yet
+                pass
+            
             for idx, row in paginated_df.iterrows():
                 with st.container():
                     c = st.columns([2, 2, 2, 4, 1])
@@ -206,9 +276,24 @@ if True:
                     # Removed truncation to allow standard wrapping
                     c[3].write(objeto)
                     
-                    # 5. Botão Detalhe
-                    if c[4].button("🔍", key=f"btn_{row['id']}", help="Ver Detalhes"):
+                    # 5. Ações (Itens)
+                    col_act1, col_act2 = c[4].columns(2)
+                    
+                    # Button 1: Modal Details (Original)
+                    if col_act1.button("🔍", key=f"btn_modal_{row['id']}", help="Ver Dados do Pregão"):
                         show_details(row)
+
+                    # Button 2: Items Logic
+                    # Check if this pregao has items loaded
+                    has_items = row['id'] in pregoes_with_items
+                    
+                    if has_items:
+                        if col_act2.button("📋", key=f"btn_det_{row['id']}", help="Ver Itens"):
+                            st.session_state['selected_pregao_id'] = int(row['id'])
+                            st.switch_page("views/4. Detalhes Itens.py")
+                    else:
+                        if col_act2.button("📥", key=f"btn_load_{row['id']}", help="Carregar Itens da API"):
+                            run_import_dialog(int(row['id']))
                         
                     st.markdown("---")
             

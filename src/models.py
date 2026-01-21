@@ -72,3 +72,18 @@ class ItemResultado(Base):
 
     def __repr__(self):
         return f"<ItemResultado(id={self.id}, item_id={self.item_pregao_id})>"
+
+class UserPregaoFavorite(Base):
+    __tablename__ = 'user_pregao_favorites'
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), index=True)
+    pregao_id = Column(Integer, ForeignKey('pregoes.id'), index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships (optional, but good for navigation)
+    user = relationship("User", backref="favorites")
+    pregao = relationship("Pregao")
+
+    def __repr__(self):
+        return f"<Favorite(user={self.user_id}, pregao={self.pregao_id})>"

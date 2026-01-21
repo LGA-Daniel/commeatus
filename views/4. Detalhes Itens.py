@@ -86,49 +86,81 @@ try:
 
         @st.dialog("Importação em Lote")
         def run_batch_results(pregao_id):
+            # Unique session key for this operation
+            session_key = f"batch_import_state_{pregao_id}"
+            
+            # Initialize state if needed
+            if session_key not in st.session_state:
+                st.session_state[session_key] = {"status": "ready", "results": None}
+
+            state = st.session_state[session_key]
+
             st.write("Identificando itens homologados...")
             
             # Find target items
-            with next(get_db()) as db:
-                from sqlalchemy import text
-                # We look for items that are likely closed/finished
-                # Use text() because 'situacaocompraitemnome' is a dynamic column not in the ORM model
-                targets = db.query(ItemPregao).filter(
-                    ItemPregao.pregao_id == pregao_id
-                ).filter(
-                    text("Situacaocompraitemnome ILIKE '%homologado%' OR Situacaocompraitemnome ILIKE '%adjudicado%'")
-                ).all()
-                
-                items_to_process = [t.id for t in targets]
+            items_to_process = []
+            try:
+                with next(get_db()) as db:
+                    from sqlalchemy import text
+                    targets = db.query(ItemPregao).filter(
+                        ItemPregao.pregao_id == pregao_id
+                    ).filter(
+                        text("Situacaocompraitemnome ILIKE '%homologado%' OR Situacaocompraitemnome ILIKE '%adjudicado%'")
+                    ).all()
+                    
+                    items_to_process = [t.id for t in targets]
+            except Exception as e:
+                st.error(f"Erro ao buscar itens: {e}")
+                return
             
             if not items_to_process:
                 st.warning("Nenhum item com situação 'Homologado' ou 'Adjudicado' encontrado.")
-                if st.button("Fechar"): st.rerun()
+                if st.button("Fechar"): 
+                     if session_key in st.session_state: del st.session_state[session_key]
+                     st.rerun()
                 return
 
             st.info(f"Encontrados {len(items_to_process)} itens para processar.")
             
-            progress_bar = st.progress(0)
-            status_text = st.empty()
+            # State Machine
+            if state["status"] == "ready":
+                if st.button("🚀 Iniciar Importação", type="primary"):
+                    st.session_state[session_key]["status"] = "running"
+                    st.rerun()
             
-            processed = 0
-            errors = 0
-            
-            from src.workers.import_results import import_item_results
-            
-            for idx, item_id in enumerate(items_to_process):
-                status_text.text(f"Processando item {idx+1}/{len(items_to_process)} (ID: {item_id})...")
-                ok, msg, cnt = import_item_results(item_id)
-                if not ok: errors += 1
-                processed += 1
-                progress_bar.progress(processed / len(items_to_process))
-            
-            st.success(f"Processamento concluído! {processed} itens verificados.")
-            if errors > 0:
-                st.warning(f"{errors} itens apresentaram erro ou sem dados.")
-            
-            if st.button("Concluir", type="primary"):
+            elif state["status"] == "running":
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                processed = 0
+                errors = 0
+                
+                from src.workers.import_results import import_item_results
+                
+                for idx, item_id in enumerate(items_to_process):
+                    status_text.text(f"Processando item {idx+1}/{len(items_to_process)} (ID: {item_id})...")
+                    ok, msg, cnt = import_item_results(item_id)
+                    if not ok: errors += 1
+                    processed += 1
+                    progress_bar.progress(processed / len(items_to_process))
+                
+                # Save results to state and update status
+                st.session_state[session_key]["results"] = {
+                    "processed": processed,
+                    "errors": errors
+                }
+                st.session_state[session_key]["status"] = "done"
                 st.rerun()
+                
+            elif state["status"] == "done":
+                res = state.get("results", {})
+                st.success(f"Processamento concluído! {res.get('processed', 0)} itens verificados.")
+                if res.get('errors', 0) > 0:
+                    st.warning(f"{res.get('errors')} itens apresentaram erro ou sem dados.")
+                
+                if st.button("Concluir e Fechar", type="primary"):
+                    del st.session_state[session_key]
+                    st.rerun()
 
         c_btn.button("🔄 Atualizar Itens", type="primary", on_click=run_import_dialog, args=(pregao_id,))
         c_btn.button("📥 Baixar Resultados", on_click=run_batch_results, args=(pregao_id,), help="Baixar resultados dos itens homologados")

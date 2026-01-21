@@ -28,6 +28,7 @@ if st.session_state.user is None:
         user = validate_token(token)
         if user:
             st.session_state.user = {
+                "id": user.id,
                 "username": user.username,
                 "name": user.name,
                 "role": user.role

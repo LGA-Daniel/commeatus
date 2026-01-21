@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 from src.database import get_engine
+from src.favorites import toggle_favorite, get_user_favorites
+
 
 st.set_page_config(page_title="Dashboard Pregões", page_icon="📊", layout="wide")
 
@@ -32,9 +34,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Filters
-# Filters
 with st.container(border=True):
-    st.subheader("Filtros de Pesquisa")
+    # Header Row with Filter
+    c_head, c_check = st.columns([0.7, 0.3])
+    c_head.subheader("Filtros de Pesquisa")
+    
+    # Favorites Filter (Right aligned)
+    # Favorites Filter (Right aligned)
+    # Using 'key' automatically persists the state
+    only_favorites = c_check.toggle("Apenas Monitorados", key="p_filter_fav")
     
     # Row 1: Year & UASG
     c1, c2 = st.columns([1, 2])
@@ -194,6 +202,19 @@ if True:
         where_clauses.append(clause)
         sql_params["search"] = f"%{search_query}%"
         
+    if only_favorites and "user" in st.session_state:
+        user_id = st.session_state.user.get("id")
+        if user_id:
+            fav_ids = get_user_favorites(user_id)
+            if not fav_ids:
+                # User has no favorites, show nothing or handle gracefully
+                where_clauses.append("1=0") 
+            else:
+                fav_ids_str = ",".join(str(f) for f in fav_ids)
+                where_clauses.append(f"id IN ({fav_ids_str})")
+        else:
+            st.warning("Faça login para ver seus favoritos.")
+
     where_str = " AND ".join(where_clauses)
     
     query = f"""
@@ -223,8 +244,13 @@ if True:
             total_pages = max(1, (len(df) - 1) // rows_per_page + 1)
             
             # Header
-            cols = st.columns([2, 2, 2, 4, 1])
+            cols = st.columns([2, 2, 2, 4, 1.5])
             headers = ["Modalidade", "Unidade", "Compra/Ano", "Objeto", "Ação"]
+            
+            # Fetch favorites for UI state
+            user_favorites = set()
+            if "user" in st.session_state and st.session_state.user.get("id"):
+                user_favorites = set(get_user_favorites(st.session_state.user["id"]))
             
             # Helper to safely get col value
             def get_val(row, default_col, fallback=None):
@@ -261,32 +287,29 @@ if True:
             
             for idx, row in paginated_df.iterrows():
                 with st.container():
-                    c = st.columns([2, 2, 2, 4, 1])
+                    c = st.columns([2, 2, 2, 4, 1.5])
                     
                     # 1. Modalidade
                     c[0].write(get_val(row, 'modalidadenome'))
                     # 2. Unidade
-                    c[1].write(get_val(row, 'unidade_orgao')) # or unidadeorgao_nomeunidade
+                    c[1].write(get_val(row, 'unidade_orgao')) 
                     # 3. Compra/Ano
                     num = get_val(row, 'numerocompra')
                     ano = get_val(row, 'anocompra')
                     c[2].write(f"{num}/{ano}")
                     # 4. Objeto
                     objeto = str(get_val(row, 'objetocompra'))
-                    # Removed truncation to allow standard wrapping
                     c[3].write(objeto)
                     
                     # 5. Ações (Itens)
-                    col_act1, col_act2 = c[4].columns(2)
+                    col_act1, col_act2, col_act3 = c[4].columns([1, 1, 1])
                     
-                    # Button 1: Modal Details (Original)
+                    # Button 1: Modal Details
                     if col_act1.button("🔍", key=f"btn_modal_{row['id']}", help="Ver Dados do Pregão"):
                         show_details(row)
 
                     # Button 2: Items Logic
-                    # Check if this pregao has items loaded
                     has_items = row['id'] in pregoes_with_items
-                    
                     if has_items:
                         if col_act2.button("📋", key=f"btn_det_{row['id']}", help="Ver Itens"):
                             st.session_state['selected_pregao_id'] = int(row['id'])
@@ -294,7 +317,22 @@ if True:
                     else:
                         if col_act2.button("📥", key=f"btn_load_{row['id']}", help="Carregar Itens da API"):
                             run_import_dialog(int(row['id']))
-                        
+
+                    # Button 3: Monitor (Favorites)
+                    is_fav = row['id'] in user_favorites
+                    # Icon always filled, differentiation by type below
+                    fav_icon = "⭐" 
+                    fav_type = "primary" if is_fav else "secondary"
+                    fav_help = "Monitorado" if is_fav else "Monitorar Pregão"
+                    
+                    if col_act3.button(fav_icon, key=f"fav_{row['id']}", type=fav_type, help=fav_help):
+                        user_id = st.session_state.user.get("id")
+                        if user_id:
+                            toggle_favorite(user_id, row['id'])
+                            st.rerun()
+                        else:
+                            st.error("Faça Login")
+
                     st.markdown("---")
             
             # Pagination Controls

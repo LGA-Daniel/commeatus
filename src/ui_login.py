@@ -31,6 +31,7 @@ def render_login(cookie_manager):
                 if user:
                     # 1. Update Session State
                     st.session_state.user = {
+                        "id": user.id,
                         "username": user.username,
                         "name": user.name,
                         "role": user.role

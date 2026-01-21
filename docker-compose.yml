@@ -18,21 +18,6 @@ services:
       - db
     restart: always
 
-  # --- Acesso Jupyter/Arquivos ---
-  file-system-access:
-    container_name: commeatus_fs
-    build: .
-    ports:
-      - "8888:8888"
-    volumes:
-      - .:/app
-    environment:
-      - TZ=America/Maceio
-    command: >
-      conda run --no-capture-output -n commeatus_env 
-      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password=''
-    restart: always
-
   # --- NOVO: Banco de Dados PostgreSQL ---
   db:
     container_name: commeatus_db

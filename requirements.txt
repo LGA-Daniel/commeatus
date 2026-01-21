@@ -1,0 +1,9 @@
+streamlit
+extra_streamlit_components
+pandas
+numpy
+psycopg2-binary
+sqlalchemy
+requests
+aiohttp
+PyJWT

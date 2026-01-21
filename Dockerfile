@@ -1,29 +1,23 @@
-# Baseada em Debian, mas com o gerenciador Conda pré-instalado
-FROM continuumio/miniconda3
+# Baseada em Python 3.12-slim (versão estável e leve)
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# 1. Criação do ambiente via Conda
-# O segredo: instalamos as libs pelo canal 'conda-forge' que tem ótima compatibilidade
-# e especificamos 'nomkl' para evitar otimizações da Intel que quebram CPUs antigas.
-RUN conda create -n commeatus_env python=3.9 \
-    streamlit \
-    pandas \
-    numpy \
-    jupyterlab \
-    psycopg2 \
-    sqlalchemy \
-    nomkl \
-    -c conda-forge -y
-# 2. Configurar o shell para usar o ambiente criado por padrão
-SHELL ["conda", "run", "-n", "commeatus_env", "/bin/bash", "-c"]
+# Instalar dependências do sistema (curl para o healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# 3. Cópia do código
+# Copiar requirements e instalar dependências Python
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Cópia do código
 COPY . .
 
-# 4. Porta e Healthcheck
+# Porta e Healthcheck
 EXPOSE 8501
 HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
 
-# 5. Execução usando o ambiente conda
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "commeatus_env", "streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+# Execução padrão do Streamlit
+CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]

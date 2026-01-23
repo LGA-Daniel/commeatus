@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from src.database import get_engine, get_db
 from src.models import Pregao, ItemPregao
+from src.ui_item_details import show_item_details, show_result_details, fetch_result_dialog
 
 st.set_page_config(page_title="Detalhes dos Itens", page_icon="📋", layout="wide")
 
@@ -42,21 +43,34 @@ try:
         c_title.title(f"📋 Itens do Pregão {pregao.numero_controle_pncp}")
         
         # Try to extract link
+        # Extract JSON Content safely
+        dados_json = {}
         link_pncp = None
         try:
-            dados = pregao.conteudo
-            if isinstance(dados, str):
+            raw_c = pregao.conteudo
+            if isinstance(raw_c, str):
                 import json
-                dados = json.loads(dados)
-            if isinstance(dados, list) and dados:
-                dados = dados[0]
-            if isinstance(dados, dict):
-                link_pncp = dados.get('linkSistemaOrigem') or dados.get('linksistemaorigem')
+                dados_json = json.loads(raw_c)
+            elif isinstance(raw_c, (dict, list)):
+                dados_json = raw_c
+                
+            if isinstance(dados_json, list) and dados_json:
+                dados_json = dados_json[0]
+                
+            if isinstance(dados_json, dict):
+                link_pncp = dados_json.get('linkSistemaOrigem') or dados_json.get('linksistemaorigem')
         except:
             pass
             
         if link_pncp:
             c_link.link_button("🔗 Abrir no PNCP", link_pncp)
+            
+        # Prepare Context for Items
+        pregao_ctx = {
+            "numero": dados_json.get('numeroCompra') or dados_json.get('numerocompra'),
+            "ano": dados_json.get('anoCompra') or dados_json.get('anocompra'),
+            "uasg": pregao.unidade_orgao
+        }
         
         # Modal for Execution with Feedback (Same as Pregoes.py)
         @st.dialog("Sincronização de Itens")
@@ -178,118 +192,9 @@ try:
 
         st.subheader("Itens Licitados")
         
-        # Modal for Item Details
-        @st.dialog("Detalhes do Item", width="large")
-        def show_item_details(row_data):
-            st.subheader(f"Item {row_data.get('numero_item', '?')} - {row_data.get('descricao', 'N/A')}")
-            
-            # Identify "core" fields vs "extra" fields
-            exclude_keys = ['id', 'pregao_id', 'conteudo', 'created_at']
-            
-            # Display core/flat fields first
-            flat_data = {k: v for k, v in row_data.items() if k not in exclude_keys}
-            
-            # Grid layout for flat fields
-            if flat_data:
-                st.markdown("##### Dados Principais")
-                cols = st.columns(2)
-                idx = 0
-                for k, v in flat_data.items():
-                    with cols[idx % 2]:
-                        st.text_input(k.replace("_", " ").title(), str(v), disabled=True)
-                    idx += 1
-            
-            st.divider()
-            
-            # Display raw JSON content if available
-            conteudo = row_data.get('conteudo')
-            if conteudo:
-                with st.expander("Conteúdo JSON Completo (API)", expanded=False):
-                    if isinstance(conteudo, str):
-                        try:
-                            import json
-                            st.json(json.loads(conteudo))
-                        except:
-                            st.text(conteudo)
-                    else:
-                        st.json(conteudo)
+        # Modal for Fetching Results (Removed, imported)
 
-        # Modal for Result Details
-        @st.dialog("Detalhes do Resultado", width="large")
-        def show_result_details(item_id, conteudo_result):
-            st.subheader("Resultado do Item")
-            
-            col_top_1, col_top_2 = st.columns([0.7, 0.3])
-            if col_top_2.button("🔄 Atualizar Resultado"):
-                 with st.spinner("Consultando API PNCP..."):
-                     from src.workers.import_results import import_item_results
-                     success, msg, count = import_item_results(item_id)
-                     if success:
-                         st.success("Atualizado!")
-                         # Refresh data in-place to keep modal open
-                         from src.models import ItemResultado
-                         with next(get_db()) as db: # Use get_db from top-level import
-                             res = db.query(ItemResultado).filter(ItemResultado.item_pregao_id == item_id).first()
-                             if res:
-                                 conteudo_result = res.conteudo
-                     else:
-                         st.error(msg)
-            
-            # Use raw JSON content
-            data_dict = {}
-            if isinstance(conteudo_result, str):
-                import json
-                try: data_dict = json.loads(conteudo_result)
-                except: data_dict = {"raw": conteudo_result}
-            elif isinstance(conteudo_result, dict):
-                data_dict = conteudo_result
-            
-            # Display important fields in a grid
-            if data_dict:
-                # Identify likely important fields
-                # Filter out complex objects for the top grid
-                simple_fields = {k: v for k, v in data_dict.items() if isinstance(v, (str, int, float, bool)) and v is not None}
-                
-                if simple_fields:
-                    st.markdown("##### Dados Principais")
-                    cols = st.columns(2)
-                    idx = 0
-                    for k, v in simple_fields.items():
-                        with cols[idx % 2]:
-                             st.text_input(k.replace("_", " ").title(), str(v), disabled=True)
-                        idx += 1
-                
-                st.divider()
-                with st.expander("Conteúdo JSON Completo", expanded=False):
-                    st.json(data_dict)
 
-        # Modal for Fetching Results
-        @st.dialog("Sincronização de Resultados")
-        def fetch_result_dialog(item_id):
-            st.write("Consultando resultados no PNCP...")
-            status_container = st.empty()
-            
-            with status_container.status("Processando...", expanded=True) as status:
-                st.write("Acessando API...")
-                from src.workers.import_results import import_item_results
-                success, msg, count = import_item_results(item_id)
-                
-                if success:
-                    status.update(label="Concluído!", state="complete", expanded=False)
-                else:
-                    status.update(label="Erro!", state="error", expanded=False)
-                    
-            if success:
-                st.success(f"{msg}")
-                if count > 0:
-                    st.info(f"{count} registros de resultado encontrados.")
-                else:
-                    st.warning("Nenhum resultado disponível (204).")
-            else:
-                st.error(f"Falha: {msg}")
-                
-            if st.button("Fechar e Atualizar", type="primary", key="btn_close_res_dlg"):
-                st.rerun()
 
         # Load all items with all columns
         query = f"""
@@ -366,15 +271,7 @@ try:
                 
                 # 1. View Item Detail
                 if c_a1.button("🔍", key=f"btn_item_{row_id}", help="Ver Detalhes do Item"):
-                    show_item_details(row)
-                
-                # 2. Result Button (only if applicable)
-                if has_result:
-                     if c_a2.button("📋", key=f"btn_view_res_{row_id}", help="Ver Resultado Homologado", type="secondary"):
-                         show_result_details(row_id, items_with_results[row_id])
-                elif "homologado" in situacao or "adjudicado" in situacao:
-                     if c_a2.button("📥", key=f"btn_fetch_res_{row_id}", help="Buscar Resultado na API"):
-                         fetch_result_dialog(row_id)
+                    show_item_details(row, pregao_context=pregao_ctx, result_data=items_with_results.get(row_id))
                 
                 st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
         else:

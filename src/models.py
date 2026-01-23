@@ -4,6 +4,7 @@ from .database import Base
 
 class User(Base):
     __tablename__ = 'users'
+    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
@@ -20,6 +21,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 class Pregao(Base):
     __tablename__ = 'pregoes'
+    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
     numero_controle_pncp = Column(String, unique=True, index=True, nullable=False)
@@ -37,6 +39,7 @@ from sqlalchemy.orm import relationship
 
 class ItemPregao(Base):
     __tablename__ = 'itens_pregao'
+    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
     pregao_id = Column(Integer, ForeignKey('pregoes.id'), index=True)
@@ -59,6 +62,7 @@ class ItemPregao(Base):
 
 class ItemResultado(Base):
     __tablename__ = 'itens_resultados'
+    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
     item_pregao_id = Column(Integer, ForeignKey('itens_pregao.id'), index=True)
@@ -75,6 +79,7 @@ class ItemResultado(Base):
 
 class UserPregaoFavorite(Base):
     __tablename__ = 'user_pregao_favorites'
+    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id'), index=True)

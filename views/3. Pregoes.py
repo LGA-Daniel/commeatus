@@ -3,9 +3,10 @@ import pandas as pd
 from datetime import datetime, timedelta
 from src.database import get_engine
 from src.favorites import toggle_favorite, get_user_favorites
+from src.ui_pregao_details import show_details
 
 
-st.set_page_config(page_title="Dashboard Pregões", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Painel de Pregões (PNCP)", page_icon="📊", layout="wide")
 
 st.title("📊 Painel de Pregões (PNCP)")
 
@@ -33,19 +34,23 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Initialize persistent session state
+if "p_filter_years" not in st.session_state: st.session_state.p_filter_years = []
+if "p_filter_uasgs" not in st.session_state: st.session_state.p_filter_uasgs = []
+if "p_filter_search" not in st.session_state: st.session_state.p_filter_search = ""
+if "p_filter_fav" not in st.session_state: st.session_state.p_filter_fav = False
+
 # Filters
 with st.container(border=True):
     # Header Row with Filter
-    c_head, c_check = st.columns([0.7, 0.3])
-    c_head.subheader("Filtros de Pesquisa")
+    st.subheader("Pesquisa:")
+
     
-    # Favorites Filter (Right aligned)
-    # Favorites Filter (Right aligned)
-    # Using 'key' automatically persists the state
-    only_favorites = c_check.toggle("Apenas Monitorados", key="p_filter_fav")
-    
-    # Row 1: Year & UASG
-    c1, c2 = st.columns([1, 2])
+
+    # Row 1: Year, UASG, Spacer, Button
+    # Redistribute using ratios acting as percentages: 20%, 40%, 15%, 25%
+    c1, c2, c_btn = st.columns([0.25, 0.50, 0.25])
+
     
     # helper to get filter options
     @st.cache_data(ttl=60)
@@ -70,16 +75,32 @@ with st.container(border=True):
     engine = get_engine()
     available_years, available_uasgs = load_filter_options()
     
-    # Initialize persistent session state
-    if "p_filter_years" not in st.session_state: st.session_state.p_filter_years = []
-    if "p_filter_uasgs" not in st.session_state: st.session_state.p_filter_uasgs = []
-    if "p_filter_search" not in st.session_state: st.session_state.p_filter_search = ""
+
 
     # Widgets use 'value' from persistent state
     # We don't use 'key' to bind directly because the widget would be cleared on page switch
-    selected_years = c1.multiselect("Anos", options=available_years, default=st.session_state.p_filter_years)
-    selected_uasgs = c2.multiselect("UASG / Unidade", options=available_uasgs, default=st.session_state.p_filter_uasgs)
+    selected_years = c1.multiselect("Ano da Compra:", options=available_years, default=st.session_state.p_filter_years)
+    selected_uasgs = c2.multiselect("UASG / Unidade:", options=available_uasgs, default=st.session_state.p_filter_uasgs)
     
+    with c_btn:
+        st.write("") # Spacer for label
+        
+        # Nested columns for right alignment
+        # 40% empty, 60% button (adjust as needed for visual "right")
+        cb_spacer, cb_real = st.columns([0.4, 0.6])
+        
+        with cb_real:
+            st.write("") # Extra spacer for specific alignment if needed
+            # Toggle Button
+            is_active = st.session_state.get('p_filter_fav', False)
+            btn_type = "primary" if is_active else "secondary"
+            btn_help = "Filtrar Apenas Monitorados"
+            if st.button("Compras Monitoradas ⭐", key="btn_toggle_fav_row", type=btn_type, help=btn_help):
+                st.session_state.p_filter_fav = not is_active
+                st.rerun()
+   
+    
+    only_favorites = st.session_state.p_filter_fav
     # Row 2: Search
     search_query = st.text_input("Busca Livre", value=st.session_state.p_filter_search, placeholder="Ex: Computadores, 12345/2023...")
     
@@ -105,36 +126,7 @@ if "worker_result" in st.session_state:
     del st.session_state.worker_result
 
 # Modal for Details
-@st.dialog("Detalhes do Pregão", width="large")
-def show_details(row_data):
-    # Display all fields
-    # Clean up internal keys if needed
-    exclude = ['conteudo', 'created_at'] # optionally exclude technical fields
-    
-    st.subheader(f"Pregão: {row_data.get('numero_controle_pncp', 'N/A')}")
-    
-    col1, col2 = st.columns(2)
-    cols = [col1, col2]
-    
-    idx = 0
-    for key, value in row_data.items():
-        if key not in exclude:
-            # Format key for display
-            display_key = key.replace("_", " ").title()
-            val_str = str(value)
-            
-            # Alternate columns
-    # Alternate columns
-            with cols[idx % 2]:
-                with st.container(border=True):
-                    st.caption(display_key)
-                    st.markdown(val_str)
-            idx += 1
-            
-    # Also show raw JSON content if available
-    if 'conteudo' in row_data:
-         with st.expander("Conteúdo JSON Bruto"):
-             st.json(row_data['conteudo'])
+
 
 # Modal for Execution with Feedback
 @st.dialog("Sincronização de Itens")
@@ -231,8 +223,12 @@ if True:
             params=sql_params
         )
         
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3 = st.columns([1.5, 1, 3])
         col1.metric("Total Encontrado", len(df))
+        
+        with col2:
+             st.empty() # Placeholder if needed or just remove content
+
         
         if not df.empty:
             st.divider()

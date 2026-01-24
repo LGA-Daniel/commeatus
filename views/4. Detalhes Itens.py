@@ -19,13 +19,14 @@ padding_style = """
 """
 st.markdown(padding_style, unsafe_allow_html=True)
 
-if st.button("⬅️ Voltar para Lista"):
-    st.switch_page("views/3. Pregoes.py")
+
 
 pregao_id = st.session_state.get('selected_pregao_id')
 
 if not pregao_id:
     st.warning("Nenhum pregão selecionado.")
+    if st.button("⬅️ Voltar para a Lista"):
+        st.switch_page("views/3. Pregoes.py")
     st.stop()
 
 engine = get_engine()
@@ -39,8 +40,7 @@ try:
             st.error("Pregão não encontrado na base de dados.")
             st.stop()
             
-        c_title, c_link, c_btn = st.columns([0.6, 0.2, 0.2])
-        c_title.title(f"📋 Itens do Pregão {pregao.numero_controle_pncp}")
+
         
         # Try to extract link
         # Extract JSON Content safely
@@ -62,8 +62,7 @@ try:
         except:
             pass
             
-        if link_pncp:
-            c_link.link_button("🔗 Abrir no PNCP", link_pncp)
+
             
         # Prepare Context for Items
         pregao_ctx = {
@@ -92,11 +91,13 @@ try:
             if success:
                 st.success(f"{msg}")
                 st.info(f"Itens processados: {count}")
+                import time
+                time.sleep(2)
+                st.rerun()
             else:
                 st.error(f"Falha na importação: {msg}")
-                
-            if st.button("Fechar e Atualizar", type="primary"):
-                st.rerun()
+                if st.button("Fechar", type="primary"):
+                    st.rerun()
 
         @st.dialog("Importação em Lote")
         def run_batch_results(pregao_id):
@@ -105,7 +106,8 @@ try:
             
             # Initialize state if needed
             if session_key not in st.session_state:
-                st.session_state[session_key] = {"status": "ready", "results": None}
+                # Start immediately
+                st.session_state[session_key] = {"status": "running", "results": None}
 
             state = st.session_state[session_key]
 
@@ -137,26 +139,30 @@ try:
             st.info(f"Encontrados {len(items_to_process)} itens para processar.")
             
             # State Machine
-            if state["status"] == "ready":
-                if st.button("🚀 Iniciar Importação", type="primary"):
-                    st.session_state[session_key]["status"] = "running"
-                    st.rerun()
-            
-            elif state["status"] == "running":
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                processed = 0
-                errors = 0
-                
-                from src.workers.import_results import import_item_results
-                
-                for idx, item_id in enumerate(items_to_process):
-                    status_text.text(f"Processando item {idx+1}/{len(items_to_process)} (ID: {item_id})...")
-                    ok, msg, cnt = import_item_results(item_id)
-                    if not ok: errors += 1
-                    processed += 1
-                    progress_bar.progress(processed / len(items_to_process))
+            if state["status"] == "running":
+                # Use status container for better UI
+                with st.status("Processando Resultados...", expanded=True) as status:
+                    st.write("Iniciando download...")
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    processed = 0
+                    errors = 0
+                    
+                    from src.workers.import_results import import_item_results
+                    
+                    # Perform the loop
+                    total = len(items_to_process)
+                    for idx, item_id in enumerate(items_to_process):
+                        status_text.text(f"Item {idx+1}/{total} (ID: {item_id})")
+                        ok, msg, cnt = import_item_results(item_id)
+                        if not ok: 
+                            st.write(f"❌ Item {item_id}: {msg}")
+                            errors += 1
+                        processed += 1
+                        progress_bar.progress(processed / total)
+                    
+                    status.update(label="Processamento Concluído!", state="complete", expanded=False)
                 
                 # Save results to state and update status
                 st.session_state[session_key]["results"] = {
@@ -168,16 +174,67 @@ try:
                 
             elif state["status"] == "done":
                 res = state.get("results", {})
-                st.success(f"Processamento concluído! {res.get('processed', 0)} itens verificados.")
-                if res.get('errors', 0) > 0:
-                    st.warning(f"{res.get('errors')} itens apresentaram erro ou sem dados.")
+                st.success(f"Operação finalizada! {res.get('processed', 0)} itens verificados.")
                 
-                if st.button("Concluir e Fechar", type="primary"):
-                    del st.session_state[session_key]
-                    st.rerun()
+                if res.get('errors', 0) > 0:
+                    st.warning(f"{res.get('errors')} itens apresentaram falha. Verifique os logs acima.")
+                
+                # Wait a bit longer so user can read
+                import time
+                time.sleep(4)
+                del st.session_state[session_key]
+                st.rerun()
 
-        c_btn.button("🔄 Atualizar Itens", type="primary", on_click=run_import_dialog, args=(pregao_id,))
-        c_btn.button("📥 Baixar Resultados", on_click=run_batch_results, args=(pregao_id,), help="Baixar resultados dos itens homologados")
+        # Load all items with all columns
+        query = f"""
+            SELECT *
+            FROM itens_pregao
+            WHERE pregao_id = {pregao_id}
+            ORDER BY numero_item ASC
+        """
+        
+        df_items = pd.read_sql(query, engine)
+        
+        # Load Existing Results Map (item_id -> content/true)
+        from src.models import ItemResultado
+        items_with_results = {}
+        try:
+            # Safe check if table exists implicitly by catching error if query fails, or rely on empty list
+            # Need to handle empty list for df_items['id']
+            if not df_items.empty:
+                ids_str = ",".join([str(x) for x in df_items['id'].tolist()])
+                if ids_str:
+                     results_query = f"SELECT item_pregao_id, conteudo FROM itens_resultados WHERE item_pregao_id IN ({ids_str})"
+                     results_df = pd.read_sql(results_query, engine)
+                     for _, r in results_df.iterrows():
+                         items_with_results[r['item_pregao_id']] = r['conteudo']
+        except:
+            pass # Table might not exist yet
+
+        # --- Action Buttons & Title ---
+        # 6 equal columns: 1 (Back), 2-3 (Empty), 4 (PNCP), 5 (Update), 6 (Download)
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        
+        if c1.button("⬅️ Voltar para a Lista", use_container_width=True):
+            st.switch_page("views/3. Pregoes.py")
+        
+        if link_pncp:
+            c4.link_button("🔗 Abrir no PNCP", link_pncp, use_container_width=True)
+            
+        if c5.button("🔄 Atualizar Itens", use_container_width=True):
+            run_import_dialog(pregao_id)
+            
+        # Check if we already have results to decide the button label
+        has_results = len(items_with_results) > 0
+        btn_label = "🔄 Atualizar Resultados" if has_results else "📥 Baixar Resultados"
+        
+        if c6.button(btn_label, use_container_width=True):
+            # Clean up previous state to ensure fresh run
+            if f"batch_import_state_{pregao_id}" in st.session_state:
+                del st.session_state[f"batch_import_state_{pregao_id}"]
+            run_batch_results(pregao_id)
+        
+        st.title(f"📋 Itens do Pregão {pregao_ctx.get('numero')}/{pregao_ctx.get('ano')}")
         
         # Pregao Header
         with st.container(border=True):
@@ -196,30 +253,7 @@ try:
 
 
 
-        # Load all items with all columns
-        query = f"""
-            SELECT *
-            FROM itens_pregao
-            WHERE pregao_id = {pregao_id}
-            ORDER BY numero_item ASC
-        """
-        
-        df_items = pd.read_sql(query, engine)
-        
-        # Load Existing Results Map (item_id -> content/true)
-        from src.models import ItemResultado
-        items_with_results = {}
-        try:
-            results_query = f"""
-                SELECT item_pregao_id, conteudo 
-                FROM itens_resultados 
-                WHERE item_pregao_id IN ({','.join([str(x) for x in df_items['id'].tolist()] + [str(0)])})
-            """
-            results_df = pd.read_sql(results_query, engine)
-            for _, r in results_df.iterrows():
-                items_with_results[r['item_pregao_id']] = r['conteudo']
-        except:
-            pass # Table might not exist yet
+
         
         if not df_items.empty:
             # Table Header
@@ -258,10 +292,10 @@ try:
                 c[3].write(f"{qtd:.2f}" if qtd is not None else "-")
                 
                 v_unit = safe_float(row.get('valor_unitario') or row.get('Valorunitario') or row.get('valorunitario'))
-                c[4].write(f"R$ {v_unit:,.2f}" if v_unit is not None else "-")
+                c[4].write(f"R$ {v_unit:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if v_unit is not None else "-")
                 
                 v_total = safe_float(row.get('Valortotal') or row.get('valortotal') or row.get('valor_total'))
-                c[5].write(f"R$ {v_total:,.2f}" if v_total is not None else "-")
+                c[5].write(f"R$ {v_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if v_total is not None else "-")
                 
                 # Action Buttons
                 col_act = c[6]

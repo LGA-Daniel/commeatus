@@ -46,7 +46,7 @@ def logout():
 # --- Definição das Páginas ---
 login_page = st.Page("views/0. Login.py", title="Login", icon="🔐")
 home_page = st.Page("views/1. Home.py", title="Home", default=True)
-pregoes_page = st.Page("views/3. Pregoes.py", title="Dashboard Pregões", icon="📊")
+pregoes_page = st.Page("views/3. Pregoes.py", title="Listar Aquisições/Contratações")
 detalhes_page = st.Page("views/4. Detalhes Itens.py", title="Detalhes Itens", icon="📋")
 db_page = st.Page("views/2. Test DBCONN.py", title="Diagnóstico de Banco", icon="🔌")
 
@@ -61,9 +61,22 @@ if st.session_state.user:
     admin_tools = [db_page] 
     
     pages_dict = {
-        "Navegação": user_pages,
+        "Navegação": [home_page, pregoes_page, detalhes_page],
         "Ferramentas": admin_tools
     }
+
+    # Hack to hide the "Detalhes Itens" page from the sidebar but keep it accessible
+    st.markdown("""
+        <style>
+            div[data-testid="stSidebarNav"] li:has(a[href*="Detalhes_Itens"]) {
+                display: none;
+            }
+            /* Fallback if :has is not supported */
+            div[data-testid="stSidebarNav"] a[href*="Detalhes_Itens"] {
+                display: none;
+            }
+        </style>
+    """, unsafe_allow_html=True)
     
     # Add Admin pages if role is admin
     if st.session_state.user['role'] == 'admin':

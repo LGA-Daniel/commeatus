@@ -4,11 +4,12 @@ from datetime import datetime, timedelta
 from src.database import get_engine
 from src.favorites import toggle_favorite, get_user_favorites
 from src.ui_pregao_details import show_details
+import sys
 
 
-st.set_page_config(page_title="Painel de Pregões (PNCP)", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Contratações (PNCP)", page_icon="", layout="wide")
 
-st.title("📊 Painel de Pregões (PNCP)")
+st.title("Listar Aquisições e Contratações (PNCP)")
 
 # --- CSS for Custom Table ---
 st.markdown("""
@@ -149,11 +150,13 @@ def run_import_dialog(pregao_id):
     if success:
         st.success(f"{msg}")
         st.info(f"Itens processados: {count}")
+        import time
+        time.sleep(2)
+        st.rerun()
     else:
         st.error(f"Falha na importação: {msg}")
-        
-    if st.button("Fechar e Atualizar", type="primary"):
-        st.rerun()
+        if st.button("Fechar e Atualizar", type="primary"):
+            st.rerun()
 
 # Load Data
 if True:
@@ -348,3 +351,4 @@ if True:
             
     except Exception as e:
         st.error(f"Erro ao carregar dados: {e}")
+

@@ -6,6 +6,11 @@ WORKDIR /app
 # Instalar dependências do sistema (curl para o healthcheck)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libjpeg-dev \
+    libopenjp2-7-dev \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements e instalar dependências Python

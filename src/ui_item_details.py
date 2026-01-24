@@ -2,9 +2,53 @@ import streamlit as st
 import pandas as pd
 from src.database import get_db, get_engine
 
+
 # Modal for Item Details
 @st.dialog("Detalhes do Item", width="large")
 def show_item_details(row_data, pregao_context=None, result_data=None):
+    # Cleanup: Remove PDF keys from session_state that do not belong to this Item
+    current_id = str(row_data.get('id', 'x'))
+    keys_to_del = []
+    for k in st.session_state.keys():
+        if(k.startswith("pdf_item_std_") or k.startswith("pdf_item_weasy_")) and not k.endswith(f"_{current_id}"):
+            keys_to_del.append(k)
+    for k in keys_to_del:
+        del st.session_state[k]
+
+    # PDF Button (WeasyPrint Only)
+    k_pdf = f"pdf_item_weasy_{row_data.get('id', 'x')}"
+    cont_pdf = st.empty()
+    
+    if k_pdf in st.session_state:
+        cont_pdf.download_button(
+            label="📄 Baixar PDF",
+            data=st.session_state[k_pdf],
+            file_name=f"item_weasy_{row_data.get('numero_item', 0)}_{pregao_context.get('numero', '') if pregao_context else ''}.pdf",
+            mime="application/pdf",
+            type="secondary"
+        )
+    else:
+        if cont_pdf.button("⚙️ Gerar PDF"):
+            try:
+                with st.spinner("Gerando PDF..."):
+                    from .pdf_item_weasy import generate_item_pdf_weasy
+                    pdf_bytes_w = generate_item_pdf_weasy(row_data, pregao_context, result_data)
+                    st.session_state[k_pdf] = pdf_bytes_w
+                    # Immediate swap
+                    cont_pdf.download_button(
+                        label="📄 Baixar PDF",
+                        data=pdf_bytes_w,
+                        file_name=f"item_weasy_{row_data.get('numero_item', 0)}_{pregao_context.get('numero', '') if pregao_context else ''}.pdf",
+                        mime="application/pdf",
+                        type="secondary"
+                    )
+            except Exception as e:
+                err_msg = str(e)
+                if "libgobject" in err_msg or "cannot load library" in err_msg:
+                    st.warning("Erro: Bibliotecas GTK3 não encontradas. WeasyPrint requer libpango/libgobject.")
+                else:
+                    st.warning(f"Erro ao gerar PDF: {e}")
+
     # Normalize keys for Case-Insensitive Lookup
     row_keys_norm = {k.lower(): k for k in row_data.keys()}
     
@@ -26,6 +70,23 @@ def show_item_details(row_data, pregao_context=None, result_data=None):
                 if isinstance(raw_val, str):
                     if raw_val.lower() == "true": return "Sim"
                     if raw_val.lower() == "false": return "Não"
+                    # Try to parse ISO date string (YYYY-MM-DD...)
+                    if len(raw_val) >= 10 and raw_val[4] == '-' and raw_val[7] == '-':
+                        try:
+                            # Quick hack for common ISO format
+                            from datetime import datetime
+                            # Handle T or space
+                            clean_ts = raw_val.replace("T", " ")
+                            # Split potential microseconds or timezone
+                            clean_ts = clean_ts.split(".")[0]
+                            # Try to parse, might vary
+                            dt = datetime.fromisoformat(clean_ts)
+                            return dt.strftime("%d/%m/%Y")
+                        except:
+                            pass
+                
+                if hasattr(raw_val, 'strftime'):
+                    return raw_val.strftime("%d/%m/%Y")
                     
                 if raw_val is None or raw_val == "":
                     return "-"
@@ -91,8 +152,24 @@ def show_item_details(row_data, pregao_context=None, result_data=None):
         
         if is_secret:
             val = "Sigiloso"
-        elif isinstance(val, (float, int)):
-             val = f"R$ {val:,.2f}"
+        else:
+            # Try to convert to float if string
+            if isinstance(val, str):
+                try:
+                    # Clean currency symbols and spaces
+                    v_clean = val.replace("R$", "").strip()
+                    # Safe parsing logic:
+                    # 1. If ',' exists and is the decimal separator (often last separator)
+                    if "," in v_clean:
+                        # Assume '.' is thousands and ',' is decimal
+                        v_clean = v_clean.replace(".", "").replace(",", ".")
+                    
+                    val = float(v_clean)
+                except:
+                    pass
+            
+            if isinstance(val, (float, int)):
+                 val = f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
              
         with cols_v[idx]:
             st.caption(label)
@@ -138,14 +215,21 @@ def show_item_details(row_data, pregao_context=None, result_data=None):
             
             # Formatting
             if "Valor" in label and isinstance(val, (int, float)):
-                 val = f"R$ {val:,.2f}"
+                 val = f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            elif "Data" in label and isinstance(val, str) and len(val) >= 10:
+                 try:
+                     from datetime import datetime
+                     clean_ts = val.replace("T", " ").split(".")[0]
+                     dt = datetime.fromisoformat(clean_ts)
+                     val = dt.strftime("%d/%m/%Y")
+                 except:
+                     pass
             
             with cols_r[idx % 2]:
                 st.caption(label)
                 st.markdown(f"**{val}**")
         
-        with st.expander("JSON Resultados Completo"):
-            st.json(d_res)
+
             
     else:
         # Check Status for Download Button logic
@@ -170,7 +254,7 @@ def show_item_details(row_data, pregao_context=None, result_data=None):
     # RAW JSON (Bottom)
     conteudo = row_data.get('conteudo')
     if conteudo:
-        with st.expander("Conteúdo JSON Completo (API)", expanded=False):
+        with st.expander("Conteúdo JSON Item (API)", expanded=False):
             if isinstance(conteudo, str):
                 try:
                     import json
@@ -179,6 +263,17 @@ def show_item_details(row_data, pregao_context=None, result_data=None):
                     st.text(conteudo)
             else:
                 st.json(conteudo)
+
+    # Result JSON (Bottom)
+    if result_data:
+        try:
+            import json
+            if isinstance(result_data, str):
+                st.expander("Conteúdo JSON Resultado (API)", expanded=False).json(json.loads(result_data))
+            else:
+                st.expander("Conteúdo JSON Resultado (API)", expanded=False).json(result_data)
+        except:
+            st.expander("Conteúdo JSON Resultado (API)", expanded=False).text(result_data)
 
 
 # Modal for Result Details
@@ -222,12 +317,18 @@ def show_result_details(item_id, conteudo_result):
             cols = st.columns(2)
             idx = 0
             for k, v in simple_fields.items():
+                display_val = str(v)
+                
+                # Simple heuristic for currency formatting in this dynamic view
+                if "valor" in k.lower() and isinstance(v, (int, float)):
+                    display_val = f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                
                 with cols[idx % 2]:
-                        st.text_input(k.replace("_", " ").title(), str(v), disabled=True)
+                        st.text_input(k.replace("_", " ").title(), display_val, disabled=True)
                 idx += 1
         
         st.divider()
-        with st.expander("Conteúdo JSON Completo", expanded=False):
+        with st.expander("Conteúdo JSON Item", expanded=False):
             st.json(data_dict)
 
 # Modal for Fetching Results
@@ -252,8 +353,10 @@ def fetch_result_dialog(item_id):
             st.info(f"{count} registros de resultado encontrados.")
         else:
             st.warning("Nenhum resultado disponível (204).")
+        import time
+        time.sleep(2)
+        st.rerun()
     else:
         st.error(f"Falha: {msg}")
-        
-    if st.button("Fechar e Atualizar", type="primary", key="btn_close_res_dlg"):
-        st.rerun()
+        if st.button("Fechar", type="primary", key="btn_close_res_dlg"):
+            st.rerun()

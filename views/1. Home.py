@@ -1,21 +1,42 @@
 import streamlit as st
 import time
+import sys
 
 st.set_page_config(
-    page_title="Commeatus",
+    page_title="SID-DLIH",
     page_icon="📦",
     layout="centered"
 )
 
-st.write("Versão do Streamlit: " + st.__version__)
-st.title("COMMEATUS")
-st.caption("_Provisões. Passagem. Movimento._")
+
+st.title("SID-DLIH")
+st.subheader("Sistema de Inteligência de Dados de Infraestrutura e Logística Hospitalar")
 st.markdown("---")
 
-st.subheader("Ambiente Dockerizado")
-st.write("Se você vê esta mensagem, o container está rodando corretamente.")
+st.caption("Versão: Alfa 1")
+st.caption("Streamlit " + st.__version__)
 
-if st.button("Ping no Servidor"):
-    with st.spinner('Processando...'):
-        time.sleep(1)
-    st.success("✅ Pong! O sistema está vivo dentro do Docker.")
+st.caption("Python " + sys.version)
+st.caption("Desenvolvido por: DLIH/HUPAA-UFAL")
+
+
+footer = f"""
+<style>
+    .footer {{
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: transparent;
+        color: grey;
+        text-align: center;
+        padding: 10px;
+        font-size: 12px;
+    }}
+</style>
+<div class="footer">
+    <p style="margin-bottom: 0px;">Versão: Alfa 1 | Streamlit {st.__version__} | Python {sys.version.split()[0]}</p>
+    <p style="margin-bottom: 0px;">Desenvolvido por: DLIH/HUPAA-UFAL</p>
+</div>
+"""
+st.markdown(footer, unsafe_allow_html=True)

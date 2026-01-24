@@ -100,7 +100,7 @@ for u in users:
     cols[1].write(u.username)
     cols[2].write(u.name or "-")
     cols[3].write(u.role)
-    cols[4].write(u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else "-")
+    cols[4].write(u.created_at.strftime('%d/%m/%Y %H:%M') if u.created_at else "-")
     
     with cols[5]:
         col_btns = st.columns(3)

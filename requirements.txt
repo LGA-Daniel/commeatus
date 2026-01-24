@@ -8,3 +8,4 @@ requests
 aiohttp
 PyJWT
 fpdf2
+weasyprint

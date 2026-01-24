@@ -93,8 +93,9 @@ def import_item_results(item_pregao_id: int):
              return True, "API retornou lista vazia de resultados.", 0
              
         # Clear existing results for this item
+        # Do not commit yet to ensure atomicity if inserts fail
         db.query(ItemResultado).filter(ItemResultado.item_pregao_id == item_pregao_id).delete()
-        db.commit()
+        # db.commit() <- Removed to allow rollback of delete if fetch/insert fails
         
         # Dynamic Schema Logic
         existing_columns = get_existing_columns("itens_resultados")
@@ -139,9 +140,14 @@ def import_item_results(item_pregao_id: int):
                 db.execute(sql, valid_data)
                 count += 1
             except Exception as e:
+                # If an insert fails, we must fail the whole operation to preserve atomicity/state
                 logger.error(f"Insert error result {count}: {e}")
-                db.rollback()
+                raise e # Trigger outer rollback
         
+        if results_data and count == 0:
+             # We had data but inserted nothing? Rollback delete
+             raise Exception("API returned data but no records were inserted (parsing error?).")
+
         db.commit()
         return True, "Resultados importados com sucesso.", count
 

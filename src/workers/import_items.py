@@ -66,7 +66,18 @@ def import_itens_pregao(pregao_id: int):
             return True, "Nenhum item retornado pela API.", 0
             
         # Clear existing items for this pregao
-        db.query(ItemPregao).filter(ItemPregao.pregao_id == pregao_id).delete()
+        # Fix: Delete related results first to avoid FK violation
+        from src.models import ItemResultado
+        
+        # 1. Get IDs of items to be deleted
+        subquery = db.query(ItemPregao.id).filter(ItemPregao.pregao_id == pregao_id).subquery()
+        
+        # 2. Delete related results (using subquery for efficiency or direct ID list)
+        # Using synchronize_session=False is important for bulk deletes that might affect session
+        db.query(ItemResultado).filter(ItemResultado.item_pregao_id.in_(subquery)).delete(synchronize_session=False)
+        
+        # 3. Delete items
+        db.query(ItemPregao).filter(ItemPregao.pregao_id == pregao_id).delete(synchronize_session=False)
         db.commit()
         
         # ---------------------------------------------------------

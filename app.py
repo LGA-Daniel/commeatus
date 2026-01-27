@@ -80,6 +80,9 @@ if st.session_state.user:
     
     # Add Admin pages if role is admin
     if st.session_state.user['role'] == 'admin':
+        pages_dict["Relatórios"] = [
+            st.Page("views/5. Relatorio Fornecedores.py", title="Resultado por Fornecedor", icon="📊")
+        ]
         pages_dict["Administração"] = [admin_page, scripts_page]
         
     pg = st.navigation(pages_dict)
@@ -92,8 +95,16 @@ if st.session_state.user:
             
     # Cleanup Loop for Item Selection
     # If we are NOT on the details page, clear the selection
+    # If we are NOT on the details page, clear the selection
     if pg.title != "Detalhes Itens":
         st.session_state.pop('selected_pregao_id', None)
+        
+    # Cleanup for "Relatorio Fornecedores"
+    if pg.title != "Resultado por Fornecedor":
+        keys_to_clear = ['active_report_id', 'export_pdf_data', 'export_csv_data', 'rep_years', 'rep_uasgs']
+        for k in keys_to_clear:
+            if k in st.session_state:
+                del st.session_state[k]
             
     pg.run()
             
